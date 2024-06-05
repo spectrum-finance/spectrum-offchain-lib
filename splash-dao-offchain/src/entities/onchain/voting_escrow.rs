@@ -17,7 +17,7 @@ use spectrum_cardano_lib::types::TryFromPData;
 use spectrum_cardano_lib::{AssetName, OutputRef};
 use spectrum_offchain::data::HasIdentifier;
 use spectrum_offchain::ledger::TryFromLedger;
-use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptHash};
+use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptInfo};
 use uplc_pallas_codec::utils::{Int, PlutusBytes};
 
 use spectrum_cardano_lib::{
@@ -49,7 +49,7 @@ impl Identifier for VotingEscrowId {
     type For = VotingEscrowSnapshot;
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct VotingEscrow {
     pub gov_token_amount: u64,
     pub gt_policy: PolicyId,
@@ -92,7 +92,7 @@ where
         + Has<GTAuthPolicy>
         + Has<GTAuthName>
         + Has<OutputRef>
-        + Has<DeployedScriptHash<{ ProtocolValidator::VotingEscrow as u8 }>>,
+        + Has<DeployedScriptInfo<{ ProtocolValidator::VotingEscrow as u8 }>>,
 {
     fn try_from_ledger(repr: &BabbageTransactionOutput, ctx: &C) -> Option<Self> {
         if test_address(repr.address(), ctx) {
@@ -174,7 +174,7 @@ impl TryFromPData for VotingEscrowConfig {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Lock {
     Def(NetworkTime),
     Indef(Duration),

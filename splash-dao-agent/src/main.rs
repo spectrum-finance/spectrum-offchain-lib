@@ -1,4 +1,5 @@
 use std::{
+    marker::PhantomData,
     sync::{Arc, Once},
     time::UNIX_EPOCH,
 };
@@ -8,50 +9,28 @@ use bounded_integer::BoundedU8;
 use cardano_chain_sync::{
     cache::LedgerCacheRocksDB, chain_sync_stream, client::ChainSyncClient, event_source::ledger_transactions,
 };
-use cardano_explorer::{client::Explorer, CardanoNetwork, Maestro, PaymentCredential};
+use cardano_explorer::Maestro;
 use cardano_submit_api::client::LocalTxSubmissionClient;
 use chrono::Duration;
 use clap::Parser;
-use cml_chain::{
-    address::Address,
-    assets::{AssetName, MultiAsset},
-    builders::{
-        input_builder::{InputBuilderResult, SingleInputBuilder},
-        mint_builder::SingleMintBuilder,
-        output_builder::{SingleOutputBuilderResult, TransactionOutputBuilder},
-        redeemer_builder::RedeemerWitnessKey,
-        tx_builder::{ChangeSelectionAlgo, TransactionUnspentOutput},
-        witness_builder::PartialPlutusWitness,
-    },
-    crypto::TransactionHash,
-    plutus::{ConstrPlutusData, ExUnits, PlutusData, RedeemerTag},
-    transaction::{DatumOption, Transaction},
-    utils::BigInteger,
-    Value,
-};
+use cml_chain::{address::RewardAddress, assets::AssetName, transaction::Transaction, PolicyId};
 use config::AppConfig;
-use spectrum_cardano_lib::{
-    collateral::Collateral,
-    constants::BABBAGE_ERA_ID,
-    plutus_data::{ConstrPlutusDataExtension, PlutusDataExtension},
-    protocol_params::constant_tx_builder,
-    transaction::TransactionOutputExtension,
-    OutputRef,
-};
+use spectrum_cardano_lib::constants::BABBAGE_ERA_ID;
 use spectrum_offchain::{
     backlog::{persistence::BacklogStoreRocksDB, BacklogConfig, PersistentPriorityBacklog},
-    data::Has,
     rocks::RocksConfig,
 };
 use spectrum_offchain_cardano::{
-    constants::MIN_SAFE_COLLATERAL,
-    creds::operator_creds,
+    collateral::pull_collateral,
+    creds::operator_creds_base_address,
+    prover::operator::OperatorProver,
     tx_submission::{tx_submission_agent_stream, TxSubmissionAgent},
 };
 use splash_dao_offchain::{
-    deployment::{DaoDeployment, DeployedValidators, ProtocolDeployment},
+    deployment::{DaoDeployment, ProtocolDeployment},
     entities::offchain::voting_order::VotingOrder,
-    routines::inflation::Behaviour,
+    protocol_config::{ProtocolConfig, ProtocolTokens},
+    routines::inflation::{actions::CardanoInflationActions, Behaviour},
     state_projection::StateProjectionRocksDB,
     time::{NetworkTime, NetworkTimeProvider},
 };
@@ -79,14 +58,6 @@ async fn main() {
     let explorer = Maestro::new(config.maestro_key_path, config.network_id.into())
         .await
         .expect("Maestro instantiation failed");
-    let farm_factory_unspent_output = explorer
-        .utxo_by_ref(OutputRef::new(
-            TransactionHash::from_hex("55d96fc0247a4eedb8df071334db35c7dbffea380d914186a229fc1c3aab563e")
-                .unwrap(),
-            2,
-        ))
-        .await
-        .expect("bbbb");
     let protocol_deployment = ProtocolDeployment::unsafe_pull(deployment.validators, &explorer).await;
 
     let chain_sync_cache = Arc::new(Mutex::new(LedgerCacheRocksDB::new(config.chain_sync.db_path)));
@@ -109,134 +80,56 @@ async fn main() {
 
     // prepare upstreams
     let tx_submission_stream = tx_submission_agent_stream(tx_submission_agent);
-    let signal_tip_reached = Once::new();
+    let (signal_tip_reached_snd, signal_tip_reached_recv) = tokio::sync::broadcast::channel(1);
     let ledger_stream = Box::pin(ledger_transactions(
         chain_sync_cache,
-        chain_sync_stream(chain_sync, Some(&signal_tip_reached)),
+        chain_sync_stream(chain_sync, signal_tip_reached_snd),
         config.chain_sync.disable_rollbacks_until,
+        config.chain_sync.replay_from_point,
     ));
 
-    let (operator_sk, operator_pkh, operator_addr) =
-        operator_creds(config.batcher_private_key, config.node.magic);
+    // We assume the batcher's private key is associated with a Cardano base address, which also
+    // includes a reward address.
+    let (_, reward_address, payment_cred, operator_cred, operator_sk) =
+        operator_creds_base_address(config.batcher_private_key, 0);
 
-    let operator_pkh = operator_pkh.to_bech32("addr_test").unwrap().into();
-
-    let collateral = pull_collateral(operator_pkh, &explorer)
+    let collateral = pull_collateral(payment_cred, &explorer)
         .await
         .expect("Couldn't retrieve collateral");
 
-    let mut tx_builder = constant_tx_builder();
-    let farm_factory_script = PartialPlutusWitness::new(
-        cml_chain::builders::witness_builder::PlutusScriptWitness::Ref(protocol_deployment.farm_factory.hash),
-        cml_chain::plutus::PlutusData::ConstrPlutusData(ConstrPlutusData::new(0, vec![])),
+    let splash_policy =
+        PolicyId::from_hex("40079b8ba147fb87a00da10deff7ddd13d64daf48802bb3f82530c3e").unwrap();
+    let splash_name = AssetName::from(spectrum_cardano_lib::AssetName::utf8_unsafe("SplashTEST".into()));
+
+    let node_magic: u8 = config.network_id.into();
+    let protocol_config = ProtocolConfig {
+        deployed_validators: protocol_deployment,
+        tokens: ProtocolTokens::from_minted_tokens(deployment.nfts, splash_policy, splash_name),
+        operator_sk: config.batcher_private_key.into(),
+        node_magic: node_magic as u64,
+        reward_address,
+        collateral,
+        genesis_time: config.genesis_start_time.into(),
+    };
+
+    let prover = OperatorProver::new(&operator_sk);
+    let inflation_actions = CardanoInflationActions::from(protocol_config.clone());
+
+    let behaviour = Behaviour::new(
+        StateProjectionRocksDB::new(config.inflation_box_persistence_config),
+        StateProjectionRocksDB::new(config.poll_factory_persistence_config),
+        StateProjectionRocksDB::new(config.weighting_poll_persistence_config),
+        StateProjectionRocksDB::new(config.voting_escrow_persistence_config),
+        StateProjectionRocksDB::new(config.smart_farm_persistence_config),
+        StateProjectionRocksDB::new(config.perm_manager_persistence_config),
+        setup_order_backlog(config.order_backlog_config).await,
+        NetworkTimeSource {},
+        inflation_actions,
+        protocol_config,
+        PhantomData,
+        tx_submission_channel,
+        prover,
     );
-    let mut farm_factory_out = farm_factory_unspent_output.output.clone();
-
-    let farm_factory_input = SingleInputBuilder::new(
-        farm_factory_unspent_output.input,
-        farm_factory_unspent_output.output,
-    )
-    .plutus_script_inline_datum(farm_factory_script, vec![])
-    .unwrap();
-    tx_builder.add_reference_input(protocol_deployment.farm_factory.reference_utxo);
-    tx_builder.add_reference_input(protocol_deployment.smart_farm.reference_utxo);
-    tx_builder.add_input(farm_factory_input).unwrap();
-
-    // MintAction {factory_in_ix: 0}
-    let mint_redeemer = PlutusData::ConstrPlutusData(ConstrPlutusData::new(
-        0,
-        vec![PlutusData::new_integer(BigInteger::from(0))],
-    ));
-    let mint_farm_auth_token_script = PartialPlutusWitness::new(
-        cml_chain::builders::witness_builder::PlutusScriptWitness::Ref(protocol_deployment.smart_farm.hash),
-        mint_redeemer,
-    );
-    const EX_UNITS: ExUnits = ExUnits {
-        mem: 500_000,
-        steps: 200_000_000,
-        encodings: None,
-    };
-    let mint_farm_auth_token =
-        SingleMintBuilder::new_single_asset(AssetName::try_from(b"a4".to_vec()).unwrap(), 1)
-            .plutus_script(mint_farm_auth_token_script, vec![]);
-    tx_builder.add_mint(mint_farm_auth_token).unwrap();
-
-    // farm_factory out
-    let farm_factory_value = farm_factory_out.value_mut();
-    farm_factory_value.coin = 10_000_000;
-
-    // Increment farm id for farm_factory output's datum
-    let farm_auth_token_name = if let Some(datum) = farm_factory_out.data_mut() {
-        let cpd = datum.get_constr_pd_mut().unwrap();
-        let new_farm_id = if let PlutusData::Integer(i) = cpd.take_field(0).unwrap() {
-            i.as_u64().unwrap() + 1
-        } else {
-            panic!("expected bigint for farm id");
-        };
-
-        cpd.set_field(0, PlutusData::new_integer(BigInteger::from(new_farm_id)));
-        let mut buffer = [0u8; 128];
-        minicbor::encode(new_farm_id, buffer.as_mut()).unwrap();
-        AssetName::try_from(buffer.to_vec()).unwrap()
-    } else {
-        panic!("expected datum for farm_factory input!")
-    };
-    tx_builder
-        .add_output(SingleOutputBuilderResult::new(farm_factory_out))
-        .unwrap();
-
-    // smart_farm_out
-
-    let smart_farm_amount = {
-        let mut input_multiasset = MultiAsset::new();
-        input_multiasset.set(protocol_deployment.smart_farm.hash, farm_auth_token_name, 1);
-        Value::new(10_000_000, input_multiasset)
-    };
-
-    tx_builder
-        .add_output(
-            TransactionOutputBuilder::new()
-                .with_address(
-                    Address::from_bech32(
-                        &protocol_deployment
-                            .smart_farm
-                            .hash
-                            .to_bech32("addr_test")
-                            .unwrap(),
-                    )
-                    .unwrap(),
-                )
-                .with_data(DatumOption::new_datum(PlutusData::new_bytes(vec![])))
-                .next()
-                .unwrap()
-                .with_value(smart_farm_amount)
-                .build()
-                .unwrap(),
-        )
-        .unwrap();
-
-    tx_builder.set_exunits(RedeemerWitnessKey::new(RedeemerTag::Spend, 0), EX_UNITS);
-    tx_builder.set_exunits(RedeemerWitnessKey::new(RedeemerTag::Mint, 0), EX_UNITS);
-
-    tx_builder
-        .add_collateral(InputBuilderResult::from(collateral))
-        .unwrap();
-    let estimated_tx_fee = tx_builder.min_fee(true).unwrap();
-    tx_builder.set_fee(estimated_tx_fee + 1000);
-
-    let signed_tx_builder = tx_builder
-        .build(ChangeSelectionAlgo::Default, &operator_addr)
-        .unwrap();
-    let tx_body = signed_tx_builder.body();
-    //let behaviour = Behaviour::new(
-    //    StateProjectionRocksDB::new(config.inflation_box_persistence_config),
-    //    StateProjectionRocksDB::new(config.poll_factory_persistence_config),
-    //    StateProjectionRocksDB::new(config.voting_escrow_persistence_config),
-    //    StateProjectionRocksDB::new(config.smart_farm_persistence_config),
-    //    StateProjectionRocksDB::new(config.perm_manager_persistence_config),
-    //    setup_order_backlog(config.order_backlog_config),
-    //    NetworkTimeSource {},
-    //);
 }
 
 async fn setup_order_backlog(

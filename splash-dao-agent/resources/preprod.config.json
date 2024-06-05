@@ -6,6 +6,12 @@
         "d17c06f640f311b3ad08004453983e52987a01dd2da63501c2a0f65a293458a3"
       ]
     },
+    "replayFromPoint": {
+      "Specific": [
+        58169558,
+        "9830dc755157ad897f1e6fb6270742a69efcf2cc3859b1399f94fcc184fe150d"
+      ]
+    },
     "disableRollbacksUntil": 55424270,
     "dbPath": "state"
   },
@@ -22,7 +28,8 @@
     "secs": 120,
     "nanos": 0
   },
-  "batcherPrivateKey": "xprv1lzpajzrahfy23zyt8479w6h5rj7tvj5e4sa4f3pg7xk0439l2dtdc0m3j2squs5vc2fzjljaamm6a32t364ncwjkhexnnr3kezqz8v22kwsh967asaxz7jqvjdsefvvktg4zkwphtfe60fhylj248eyetvr9x6sr",
+  "batcherPrivateKey": "xprv1erkmeckpyl2gevfldl7syepwulha7rs3qlucah7vwpr9a0qdyepk3u69hsgx2tfe8uhlqchmdnc89llxysndag2lk7vejyq5wwqw2ee020mxm9td97u3s0lpm03hqa8w5ghvlm28v7qxhjdcvppde42wgy4v90z0",
+  "genesisStartTime": 1717425811,
   "orderBacklogConfig": { "db_path": "tmp/backlog" },
   "inflationBoxPersistenceConfig": { "db_path": "tmp/inflation" },
   "pollFactoryPersistenceConfig": { "db_path": "tmp/poll_factory" },

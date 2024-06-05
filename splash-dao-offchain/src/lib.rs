@@ -6,7 +6,7 @@ mod assets;
 pub mod constants;
 pub mod deployment;
 pub mod entities;
-mod protocol_config;
+pub mod protocol_config;
 mod routine;
 pub mod routines;
 pub mod state_projection;

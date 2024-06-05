@@ -34,6 +34,7 @@ const LATEST_VERSION_PREFIX: &str = "id:";
 const PREVIOUS_VERSION_PREFIX: &str = "p_id:";
 const STATE_PREFIX: &str = "s:";
 
+#[derive(Clone)]
 pub struct StateProjectionRocksDB {
     pub db: Arc<rocksdb::OptimisticTransactionDB>,
 }

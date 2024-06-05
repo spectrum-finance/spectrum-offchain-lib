@@ -8,10 +8,10 @@ use cml_chain::{OrderedHashMap, PolicyId, Value};
 use cml_crypto::RawBytesEncoding;
 use cml_multi_era::babbage::BabbageTransactionOutput;
 use derive_more::From;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use spectrum_cardano_lib::transaction::TransactionOutputExtension;
 use spectrum_cardano_lib::types::TryFromPData;
-use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptHash};
+use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptInfo};
 use uplc_pallas_codec::utils::{Int, PlutusBytes};
 
 use spectrum_cardano_lib::plutus_data::{
@@ -42,7 +42,7 @@ impl Identifier for WeightingPollId {
     type For = WeightingPollSnapshot;
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct WeightingPoll {
     pub epoch: ProtocolEpoch,
     pub distribution: Vec<(FarmId, u64)>,
@@ -185,7 +185,7 @@ impl WeightingPoll {
 impl<C> TryFromLedger<BabbageTransactionOutput, C> for WeightingPollSnapshot
 where
     C: Has<CurrentEpoch>
-        + Has<DeployedScriptHash<{ ProtocolValidator::WpAuthPolicy as u8 }>>
+        + Has<DeployedScriptInfo<{ ProtocolValidator::WpAuthPolicy as u8 }>>
         + Has<OutputRef>,
 {
     fn try_from_ledger(repr: &BabbageTransactionOutput, ctx: &C) -> Option<Self> {

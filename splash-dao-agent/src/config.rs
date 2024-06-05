@@ -30,6 +30,7 @@ pub struct AppConfig<'a> {
     pub voting_escrow_persistence_config: RocksConfig,
     pub smart_farm_persistence_config: RocksConfig,
     pub perm_manager_persistence_config: RocksConfig,
+    pub genesis_start_time: u64,
 }
 
 #[derive(serde::Deserialize)]
@@ -44,5 +45,6 @@ pub struct NodeConfig<'a> {
 pub struct ChainSyncConfig<'a> {
     pub starting_point: Point,
     pub disable_rollbacks_until: Slot,
+    pub replay_from_point: Option<Point>,
     pub db_path: &'a str,
 }

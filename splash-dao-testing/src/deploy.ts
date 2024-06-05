@@ -1,13 +1,15 @@
 import {
   Data,
+  fromHex,
   fromText,
   Lucid,
   Script,
+  toHex,
 } from "https://deno.land/x/lucid@0.10.7/mod.ts";
+import * as cbor from "https://deno.land/x/cbor@v1.5.9/index.js";
 import { getLucid } from "./lucid.ts";
 import { setupWallet } from "./wallet.ts";
 import {
-  DeploymentMintingMintGtTokens,
   DeploymentMintingOnetimeMint,
   PermManagerPermManager,
   VeFactoryMintVeCompositionToken,
@@ -31,6 +33,9 @@ import {
 } from "./types.ts";
 import { NFTNames } from "./types.ts";
 import { sleep } from "../../splash-testing-cardano/src/helpers.ts";
+import { walletFromSeed } from "https://deno.land/x/lucid@0.10.7/src/misc/wallet.ts";
+import { mnemonicToEntropy } from "https://deno.land/x/lucid@0.10.7/src/misc/bip39.ts";
+import { Bip32PrivateKey } from "https://deno.land/x/lucid@0.10.7/src/core/libs/cardano_multiplatform_lib/cardano_multiplatform_lib.generated.js";
 
 const NFT_JSON_FILENAME = "nfts.json";
 const BUILT_VALIDATORS_JSON_FILENAME = "validators.json";
@@ -43,6 +48,7 @@ const SPLASH_POLICY_ID =
 const SPLASH_ASSET_NAME = fromText("SPLASHTest");
 
 async function main() {
+  // console.log(toHex(cbor.encode(new Uint8Array([]))));
   const lucid = await getLucid();
   const pubKey = await setupWallet(lucid);
 
@@ -50,11 +56,12 @@ async function main() {
 
   // To differentiate different deployments for testing
   const postfix = "_22";
-  const acceptedAssets = new Map();
-  acceptedAssets.set({
+  const acceptedAssets: Array<
+    [{ policy: string; name: string }, { num: bigint; den: bigint }]
+  > = [[{
     policy: SPLASH_POLICY_ID,
     name: SPLASH_ASSET_NAME,
-  }, { num: 100n, den: 1000n });
+  }, { num: 100n, den: 1000n }]];
 
   const daoInput: DaoInput = {
     inflation: 1n,
@@ -66,16 +73,23 @@ async function main() {
       lastWpEpoch: 1n,
       lastGpDeadline: 1n,
     },
-    farmFactory: { lastFarmId: 10007199254740991n, farmSeedData: "" },
+    farmFactory: {
+      lastFarmId: 10007199254740991n,
+      farmSeedData: toHex(cbor.encode(new Uint8Array([]))),
+    },
     wpFactory: {
       lastPollEpoch: 0n,
       activeFarms: [fromText("farm0"), fromText("f1")],
     },
     veFactory: {
       acceptedAssets,
-      legacyAcceptedAssets: new Map(),
+      legacyAcceptedAssets: [],
     },
   };
+
+  const theDatum = Data.to(daoInput.farmFactory, SmartFarmFarmFactory.state);
+  console.log("Datum: " + theDatum);
+  console.log("Datum hash: " + lucid.utils.datumToHash(theDatum));
 
   //------------------------------------------------------------------------------------------------
 
@@ -118,6 +132,7 @@ async function createMultipleMintingUtxOs(
 ) {
   const tx = await lucid.newTx()
     .payToAddress(addr, { lovelace: firstValuePerBox })
+    .payToAddress(addr, { lovelace: subsequentValuePerBox })
     .payToAddress(addr, { lovelace: subsequentValuePerBox })
     .payToAddress(addr, { lovelace: subsequentValuePerBox })
     .payToAddress(addr, { lovelace: subsequentValuePerBox })
@@ -193,8 +208,8 @@ function buildNFTDetails(
   namePostfix: string,
 ): NFTDetails {
   const toMint: [Script, string][] = [];
-  // 5 NFTs
-  for (let i = 0; i < 5; i++) {
+  // 6 NFTs
+  for (let i = 0; i < 6; i++) {
     const script = new DeploymentMintingOnetimeMint(
       {
         transactionId: { hash: multipleUTxOTxId },
@@ -211,7 +226,7 @@ function buildNFTDetails(
   const gtTokenQty = 45000000000000000n;
   const mintGTScript = new DeploymentMintingOnetimeMint({
     transactionId: { hash: multipleUTxOTxId },
-    outputIndex: BigInt(5),
+    outputIndex: BigInt(6),
   }, gtTokenQty);
   const gtPolicyId = lucid.utils.mintingPolicyToId(mintGTScript);
 
@@ -248,7 +263,8 @@ function buildNFTDetails(
     perm_auth: toBuiltPolicyWithFixedName(toMint[2], 1n),
     proposal_auth: toBuiltPolicy(toMint[3], "proposal_auth", 1n),
     edao_msig: toBuiltPolicy(toMint[4], "edao_msig", 1n),
-    gt: toBuiltPolicy(toMint[5], "gt", gtTokenQty),
+    ve_identifier: toBuiltPolicyWithFixedName(toMint[5], 1n),
+    gt: toBuiltPolicy(toMint[6], "gt", gtTokenQty),
   };
 }
 
@@ -257,12 +273,13 @@ async function deployValidators(
 ): Promise<[string, string]> {
   const nftDetails = JSON.parse(await Deno.readTextFile(NFT_JSON_FILENAME));
   const factoryAuthPolicy = nftDetails.factory_auth.policyId;
-  const votingEscrowScript = new VotingEscrowVotingEscrow(factoryAuthPolicy);
   const gtPolicy = nftDetails.gt.policyId;
   const veFactoryAuthPolicy = nftDetails.ve_factory_auth.policyId;
+  const votingEscrowScript = new VotingEscrowVotingEscrow(veFactoryAuthPolicy);
   const proposalAuthPolicy = nftDetails.proposal_auth.policyId;
   const permManagerAuthPolicy = nftDetails.perm_auth.policyId;
   const edaoMSig = nftDetails.edao_msig.policyId;
+  const veIdentifierPolicy = nftDetails.ve_identifier.policyId;
 
   const governancePowerScript = new VotingEscrowMintGovernancePower(
     proposalAuthPolicy,
@@ -293,6 +310,7 @@ async function deployValidators(
 
   const veFactoryScript = new VeFactoryVeFactory(
     factoryAuthPolicy,
+    veIdentifierPolicy,
     veCompositionPolicy,
     gtPolicy,
     veScriptHash,
@@ -378,7 +396,7 @@ async function deployValidators(
     inflation: {
       script: inflationScript,
       hash: inflationScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -386,7 +404,7 @@ async function deployValidators(
     votingEscrow: {
       script: votingEscrowScript,
       hash: veScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -394,7 +412,7 @@ async function deployValidators(
     farmFactory: {
       script: farmFactoryScript,
       hash: farmFactoryScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -402,7 +420,7 @@ async function deployValidators(
     wpFactory: {
       script: wpFactoryScript,
       hash: wpFactoryScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -410,7 +428,7 @@ async function deployValidators(
     veFactory: {
       script: veFactoryScript,
       hash: veFactoryScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -418,7 +436,7 @@ async function deployValidators(
     govProxy: {
       script: govProxyScript,
       hash: govProxyScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -426,7 +444,7 @@ async function deployValidators(
     permManager: {
       script: permManagerScript,
       hash: permManagerScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -434,7 +452,7 @@ async function deployValidators(
     mintWPAuthToken: {
       script: wpAuthScript,
       hash: wpAuthPolicy,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -442,7 +460,7 @@ async function deployValidators(
     weightingPower: {
       script: weightingPowerScript,
       hash: weightingPowerScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -450,7 +468,7 @@ async function deployValidators(
     smartFarm: {
       script: farmAuthScript,
       hash: farmAuthScriptHash,
-      exBudget: {
+      cost: {
         mem: 500000n,
         steps: 200000000n,
       },
@@ -458,7 +476,10 @@ async function deployValidators(
   };
 
   // Write the object to a JSON file
-  await Deno.writeTextFile("validators.json", toJson(builtValidators));
+  await Deno.writeTextFile(
+    BUILT_VALIDATORS_JSON_FILENAME,
+    toJson(builtValidators),
+  );
 
   const ns: Script = lucid.utils.nativeScriptFromJson({
     type: "before",
@@ -522,6 +543,11 @@ async function deployValidators(
       { scriptRef: builtValidators.weightingPower.script },
       {},
     )
+    .payToAddressWithData(
+      lockScript,
+      { scriptRef: builtValidators.smartFarm.script },
+      {},
+    )
     .complete();
   const signedTx = await tx.sign().complete();
   const txHash1 = await signedTx.submit();
@@ -580,7 +606,7 @@ async function createEntities(
     )
     .payToContract(
       toAddr(dv.farmFactory.hash),
-      Data.to(daoInput.farmFactory, SmartFarmFarmFactory.state),
+      { inline: Data.to(daoInput.farmFactory, SmartFarmFarmFactory.state) },
       { lovelace: 5n * qty, [factoryAuthToken]: 1n },
     )
     .payToContract(
@@ -622,7 +648,7 @@ async function createEntities(
   const mintFarmAuthScriptHash = lucid.utils.validatorToScriptHash(
     mintFarmAuthScript,
   );
-  console.log(mintFarmAuthScriptHash);
+  console.log("mint_farm_auth_script_hash: " + mintFarmAuthScriptHash);
 
   const newFarmId = daoInput.farmFactory.lastFarmId + 1n;
   console.log("new farm id: " + newFarmId);
@@ -649,35 +675,37 @@ async function createEntities(
   const step0 = lucid.newTx()
     .readFrom([
       dv.farmFactory.referenceUtxo,
+      // dv.smartFarm.referenceUtxo,
     ])
     .collectFrom(
       utxos,
       Data.to("CreateFarm", SmartFarmFarmFactory.action),
     )
+    .attachMintingPolicy(mintFarmAuthScript)
     .mintAssets(
       { [farmAuthToken]: 1n },
       Data.to(
         { MintAuthToken: { factoryInIx: 0n } },
         SmartFarmMintFarmAuthToken.action,
       ),
-    )
-    .attachMintingPolicy(mintFarmAuthScript);
+    );
 
   console.log("added minting to TX");
   const step1 = step0.payToContract(
     toAddr(dv.farmFactory.hash),
-    Data.to(factoryOutDatum, SmartFarmFarmFactory.state),
-    { lovelace: qty, [factoryAuthToken]: 1n },
+    { inline: Data.to(factoryOutDatum, SmartFarmFarmFactory.state) },
+    { lovelace: 5n * qty, [factoryAuthToken]: 1n },
   );
   console.log("add output to factory ");
   try {
-    const farmTx = await step1
+    const farmTx0 = step1
       .payToContract(
         toAddr(mintFarmAuthScriptHash),
-        Data.to(""),
+        { inline: Data.to(toHex(new Uint8Array([]))) },
         { lovelace: qty, [farmAuthToken]: 1n },
-      )
-      .complete({ nativeUplc: true });
+      );
+    //const farmTx = await farmTx0.complete({ nativeUplc: true });
+    const farmTx = await farmTx0.complete();
 
     console.log("Trying to sign TX");
     const txComplete = farmTx.sign();
@@ -724,7 +752,7 @@ async function getDeployedValidators(
       key: ScriptNames,
       index,
     ) => {
-      const { script, hash } = builtValidators[key];
+      const { script, hash, cost } = builtValidators[key];
       const referenceUtxo = validatorsUtxos[index];
 
       return {
@@ -732,6 +760,7 @@ async function getDeployedValidators(
           script,
           hash,
           referenceUtxo,
+          cost,
         },
         ...acc,
       };
@@ -762,9 +791,10 @@ function toJson(data) {
   }
 }
 
+// Utility function to generate a new wallet seed
 async function generateSeed() {
   const lucid = await getLucid();
-  let seedPhrase = lucid.utils.generateSeedPhrase();
+  const seedPhrase = lucid.utils.generateSeedPhrase();
   const fromSeed = walletFromSeed(
     seedPhrase,
     {
@@ -774,6 +804,21 @@ async function generateSeed() {
   );
   console.log(seedPhrase);
   console.log(fromSeed.address);
+}
+
+function computePrivateKeyFromSeedPhrase(seedPhrase: string) {
+  const entropy = mnemonicToEntropy(seedPhrase);
+
+  // Encode the string into a Uint8Array
+  console.log(
+    Bip32PrivateKey.from_bip39_entropy(fromHex(entropy), new Uint8Array())
+      .to_bech32(),
+  );
+  const s = walletFromSeed(seedPhrase, {
+    addressType: "Base",
+    accountIndex: 0,
+  });
+  console.log(s.address);
 }
 
 main();

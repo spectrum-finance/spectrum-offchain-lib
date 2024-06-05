@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cml_chain::address::Address;
 use cml_chain::assets::AssetBundle;
-use cml_chain::builders::input_builder::SingleInputBuilder;
+use cml_chain::builders::input_builder::{InputBuilderResult, SingleInputBuilder};
 use cml_chain::builders::mint_builder::SingleMintBuilder;
 use cml_chain::builders::output_builder::{SingleOutputBuilderResult, TransactionOutputBuilder};
 use cml_chain::builders::redeemer_builder::RedeemerWitnessKey;
@@ -14,7 +14,7 @@ use cml_chain::transaction::{TransactionInput, TransactionOutput};
 use cml_chain::utils::BigInteger;
 use cml_chain::OrderedHashMap;
 use cml_crypto::blake2b256;
-use spectrum_offchain_cardano::deployment::DeployedScriptHash;
+use spectrum_offchain_cardano::deployment::DeployedScriptInfo;
 
 use bloom_offchain::execution_engine::bundled::Bundled;
 use spectrum_cardano_lib::collateral::Collateral;
@@ -101,6 +101,7 @@ pub trait InflationActions<Bearer> {
     );
 }
 
+#[derive(derive_more::From)]
 pub struct CardanoInflationActions<Ctx> {
     ctx: Ctx,
 }
@@ -109,8 +110,8 @@ pub struct CardanoInflationActions<Ctx> {
 impl<Ctx> InflationActions<TransactionOutput> for CardanoInflationActions<Ctx>
 where
     Ctx: Send
+        + Clone
         + Sync
-        + Copy
         + Has<Reward>
         + Has<Collateral>
         + Has<SplashPolicy>
@@ -131,7 +132,7 @@ where
         + Has<NodeMagic>
         + Has<OperatorCreds>
         + Has<GenesisEpochStartTime>
-        + Has<DeployedScriptHash<{ ProtocolValidator::GovProxy as u8 }>>,
+        + Has<DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }>>,
 {
     async fn create_wpoll(
         &self,
@@ -194,8 +195,8 @@ where
         // WP factory
         let gov_witness_script_hash = self
             .ctx
-            .select::<DeployedScriptHash<{ ProtocolValidator::GovProxy as u8 }>>()
-            .unwrap();
+            .select::<DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }>>()
+            .script_hash;
 
         let wp_factory_script_hash =
             compute_wp_factory_script_hash(wpoll_auth_policy, gov_witness_script_hash);
@@ -272,7 +273,7 @@ where
         );
 
         // Contracts require that weighting_poll output resides at index 1.
-        let mut wpoll_out = fresh_wpoll.clone().into_ledger(self.ctx);
+        let mut wpoll_out = fresh_wpoll.clone().into_ledger(self.ctx.clone());
         // Add wp_auth_token to this output.
         let asset_pair = OrderedHashMap::from_iter(vec![(asset, 1)]);
         let ord_hash_map = OrderedHashMap::from_iter(vec![(mint_wp_auth_token_script_hash, asset_pair)]);
@@ -314,7 +315,7 @@ where
         );
 
         tx_builder
-            .add_collateral(self.ctx.select::<Collateral>().0.clone())
+            .add_collateral(InputBuilderResult::from(self.ctx.select::<Collateral>()))
             .unwrap();
 
         let estimated_tx_fee = tx_builder.min_fee(true).unwrap();
@@ -614,7 +615,7 @@ where
         tx_builder.set_ttl(constants::MAX_TIME_DRIFT_MILLIS);
 
         tx_builder
-            .add_collateral(self.ctx.select::<Collateral>().0)
+            .add_collateral(InputBuilderResult::from(self.ctx.select::<Collateral>()))
             .unwrap();
 
         let estimated_tx_fee = tx_builder.min_fee(true).unwrap();
@@ -824,7 +825,7 @@ where
         tx_builder.add_required_signer(operator_pkh);
 
         tx_builder
-            .add_collateral(self.ctx.select::<Collateral>().0)
+            .add_collateral(InputBuilderResult::from(self.ctx.select::<Collateral>()))
             .unwrap();
 
         let estimated_tx_fee = tx_builder.min_fee(true).unwrap();

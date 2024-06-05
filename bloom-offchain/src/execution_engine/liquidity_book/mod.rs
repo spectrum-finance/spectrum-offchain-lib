@@ -116,6 +116,7 @@ where
         let mut recipe: IntermediateRecipe<Fr, Pl> = IntermediateRecipe::empty();
         let mut pools_used = HashSet::new();
         let mut execution_units_left = self.execution_cap.hard;
+        #[allow(clippy::never_loop)]
         while execution_units_left > self.execution_cap.safe_threshold() {
             let reference_static_price = self.state.best_pool_price();
             if let Some(best_fr) = self.state.pick_best_fr_either(reference_static_price) {

@@ -2,7 +2,7 @@ use cml_chain::{plutus::ExUnits, PolicyId};
 use cml_crypto::RawBytesEncoding;
 use cml_multi_era::babbage::BabbageTransactionOutput;
 use derive_more::From;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use spectrum_cardano_lib::{
     plutus_data::{ConstrPlutusDataExtension, DatumExtension, PlutusDataExtension},
     transaction::TransactionOutputExtension,
@@ -14,7 +14,7 @@ use spectrum_offchain::{
     ledger::TryFromLedger,
 };
 use spectrum_offchain_cardano::{
-    deployment::{test_address, DeployedScriptHash},
+    deployment::{test_address, DeployedScriptInfo},
     parametrized_validators::apply_params_validator,
 };
 
@@ -34,7 +34,7 @@ impl Identifier for PermManagerId {
 
 pub type PermManagerSnapshot = Snapshot<PermManager, OutputRef>;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct PermManager {
     pub perm_manager_auth_policy: PolicyId,
     pub auth_token_asset_name: AssetName,
@@ -63,7 +63,7 @@ where
     C: Has<PermManagerAuthPolicy>
         + Has<PermManagerAuthName>
         + Has<OutputRef>
-        + Has<DeployedScriptHash<{ ProtocolValidator::PermManager as u8 }>>,
+        + Has<DeployedScriptInfo<{ ProtocolValidator::PermManager as u8 }>>,
 {
     fn try_from_ledger(repr: &BabbageTransactionOutput, ctx: &C) -> Option<Self> {
         if test_address(repr.address(), ctx) {

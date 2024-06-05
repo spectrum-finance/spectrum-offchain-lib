@@ -1,11 +1,12 @@
 use std::{fmt::Display, hash::Hash};
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use spectrum_offchain::data::{EntitySnapshot, Stable};
 
 pub mod offchain;
 pub mod onchain;
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Snapshot<T, V>(T, V);
 impl<T, V> Snapshot<T, V> {
     pub fn new(t: T, v: V) -> Self {

@@ -3,7 +3,7 @@ use cml_chain::plutus::{ConstrPlutusData, ExUnits, PlutusData};
 use cml_chain::PolicyId;
 use cml_crypto::{RawBytesEncoding, ScriptHash};
 use cml_multi_era::babbage::BabbageTransactionOutput;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use spectrum_cardano_lib::plutus_data::{
     ConstrPlutusDataExtension, DatumExtension, IntoPlutusData, PlutusDataExtension,
 };
@@ -12,7 +12,7 @@ use spectrum_cardano_lib::types::TryFromPData;
 use spectrum_cardano_lib::{AssetName, OutputRef, TaggedAmount};
 use spectrum_offchain::data::{Has, HasIdentifier, Identifier, Stable};
 use spectrum_offchain::ledger::TryFromLedger;
-use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptHash};
+use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptInfo};
 use spectrum_offchain_cardano::parametrized_validators::apply_params_validator;
 use uplc_pallas_codec::utils::PlutusBytes;
 
@@ -34,6 +34,7 @@ impl Identifier for PollFactoryId {
     type For = PollFactorySnapshot;
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PollFactory {
     pub last_poll_epoch: ProtocolEpoch,
     pub active_farms: Vec<FarmId>,
@@ -70,7 +71,7 @@ impl HasIdentifier for PollFactorySnapshot {
 
 impl<C> TryFromLedger<BabbageTransactionOutput, C> for PollFactorySnapshot
 where
-    C: Has<WPAuthPolicy> + Has<OutputRef> + Has<DeployedScriptHash<{ ProtocolValidator::WpFactory as u8 }>>,
+    C: Has<WPAuthPolicy> + Has<OutputRef> + Has<DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }>>,
 {
     fn try_from_ledger(repr: &BabbageTransactionOutput, ctx: &C) -> Option<Self> {
         if test_address(repr.address(), ctx) {
@@ -87,8 +88,8 @@ where
                 last_poll_epoch,
                 active_farms,
                 stable_id: ctx
-                    .select::<DeployedScriptHash<{ ProtocolValidator::WpFactory as u8 }>>()
-                    .unwrap(),
+                    .select::<DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }>>()
+                    .script_hash,
             };
 
             return Some(Snapshot::new(poll_factory, output_ref));

@@ -267,7 +267,7 @@ impl<T> TryFromPData for TaggedAssetClass<T> {
 }
 
 #[repr(transparent)]
-#[derive(Derivative)]
+#[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug(bound = ""), Copy(bound = ""), Clone(bound = ""), Eq(bound = ""))]
 pub struct TaggedAmount<T>(u64, PhantomData<T>);
 

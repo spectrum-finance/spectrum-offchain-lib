@@ -4,13 +4,13 @@ use cml_chain::plutus::{ExUnits, PlutusData};
 use cml_chain::PolicyId;
 use cml_crypto::{RawBytesEncoding, ScriptHash};
 use cml_multi_era::babbage::BabbageTransactionOutput;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use spectrum_cardano_lib::plutus_data::{DatumExtension, IntoPlutusData, PlutusDataExtension};
 use spectrum_cardano_lib::transaction::TransactionOutputExtension;
 use spectrum_cardano_lib::{OutputRef, TaggedAmount, Token};
 use spectrum_offchain::data::{EntitySnapshot, Has, HasIdentifier, Identifier, Stable};
 use spectrum_offchain::ledger::TryFromLedger;
-use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptHash};
+use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptInfo};
 use spectrum_offchain_cardano::parametrized_validators::apply_params_validator;
 use uplc_pallas_codec::utils::{Int, PlutusBytes};
 
@@ -31,7 +31,7 @@ impl Identifier for InflationBoxId {
     type For = InflationBoxSnapshot;
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct InflationBox {
     pub last_processed_epoch: ProtocolEpoch,
     pub splash_reserves: TaggedAmount<Splash>,
@@ -94,7 +94,7 @@ impl<C> TryFromLedger<BabbageTransactionOutput, C> for InflationBoxSnapshot
 where
     C: Has<SplashPolicy>
         + Has<SplashAssetName>
-        + Has<DeployedScriptHash<{ ProtocolValidator::Inflation as u8 }>>
+        + Has<DeployedScriptInfo<{ ProtocolValidator::Inflation as u8 }>>
         + Has<OutputRef>,
 {
     fn try_from_ledger(repr: &BabbageTransactionOutput, ctx: &C) -> Option<Self> {

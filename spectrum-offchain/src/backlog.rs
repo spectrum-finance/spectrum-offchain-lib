@@ -407,7 +407,7 @@ where
 impl<TOrd, TStore> ResilientBacklog<TOrd> for PersistentPriorityBacklog<TOrd, TStore>
 where
     TStore: BacklogStore<TOrd> + Send + Sync,
-    TOrd: Send + Sync,
+    TOrd: Send,
     TOrd::TOrderId: Debug + Clone + Send + Sync,
     TOrd: UniqueOrder + Weighted + Hash + Eq + Clone,
 {

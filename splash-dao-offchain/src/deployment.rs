@@ -1,15 +1,16 @@
-use cardano_explorer::client::Explorer;
+use cardano_explorer::{client::Explorer, CardanoNetwork};
 use cml_chain::utils::BigInteger;
 use cml_crypto::ScriptHash;
 use spectrum_cardano_lib::AssetName;
 use spectrum_offchain_cardano::deployment::{
-    DeployedScriptHash, DeployedValidator, DeployedValidatorRef, Script,
+    DeployedScriptInfo, DeployedValidator, DeployedValidatorRef, Script,
 };
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DaoDeployment {
     pub validators: DeployedValidators,
+    pub nfts: MintedTokens,
 }
 
 #[derive(serde::Deserialize)]
@@ -44,6 +45,7 @@ pub struct MintedTokens {
     pub perm_auth: BuiltPolicy,
     pub proposal_auth: BuiltPolicy,
     pub edao_msig: BuiltPolicy,
+    pub ve_identifier: BuiltPolicy,
     pub gt: BuiltPolicy,
 }
 
@@ -69,29 +71,29 @@ pub enum ProtocolValidator {
 
 #[derive(Debug, Copy, Clone)]
 pub struct ProtocolScriptHashes {
-    pub inflation: DeployedScriptHash<{ ProtocolValidator::Inflation as u8 }>,
-    pub voting_escrow: DeployedScriptHash<{ ProtocolValidator::VotingEscrow as u8 }>,
-    pub smart_farm: DeployedScriptHash<{ ProtocolValidator::SmartFarm as u8 }>,
-    pub farm_factory: DeployedScriptHash<{ ProtocolValidator::FarmFactory as u8 }>,
-    pub wp_factory: DeployedScriptHash<{ ProtocolValidator::WpFactory as u8 }>,
-    pub ve_factory: DeployedScriptHash<{ ProtocolValidator::VeFactory as u8 }>,
-    pub gov_proxy: DeployedScriptHash<{ ProtocolValidator::GovProxy as u8 }>,
-    pub perm_manager: DeployedScriptHash<{ ProtocolValidator::PermManager as u8 }>,
-    pub mint_wpauth_token: DeployedScriptHash<{ ProtocolValidator::WpAuthPolicy as u8 }>,
+    pub inflation: DeployedScriptInfo<{ ProtocolValidator::Inflation as u8 }>,
+    pub voting_escrow: DeployedScriptInfo<{ ProtocolValidator::VotingEscrow as u8 }>,
+    pub smart_farm: DeployedScriptInfo<{ ProtocolValidator::SmartFarm as u8 }>,
+    pub farm_factory: DeployedScriptInfo<{ ProtocolValidator::FarmFactory as u8 }>,
+    pub wp_factory: DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }>,
+    pub ve_factory: DeployedScriptInfo<{ ProtocolValidator::VeFactory as u8 }>,
+    pub gov_proxy: DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }>,
+    pub perm_manager: DeployedScriptInfo<{ ProtocolValidator::PermManager as u8 }>,
+    pub mint_wpauth_token: DeployedScriptInfo<{ ProtocolValidator::WpAuthPolicy as u8 }>,
 }
 
 impl From<&ProtocolDeployment> for ProtocolScriptHashes {
     fn from(deployment: &ProtocolDeployment) -> Self {
         Self {
-            inflation: DeployedScriptHash::from(&deployment.inflation),
-            voting_escrow: DeployedScriptHash::from(&deployment.voting_escrow),
-            smart_farm: DeployedScriptHash::from(&deployment.smart_farm),
-            farm_factory: DeployedScriptHash::from(&deployment.farm_factory),
-            wp_factory: DeployedScriptHash::from(&deployment.wp_factory),
-            ve_factory: DeployedScriptHash::from(&deployment.ve_factory),
-            gov_proxy: DeployedScriptHash::from(&deployment.gov_proxy),
-            perm_manager: DeployedScriptHash::from(&deployment.perm_manager),
-            mint_wpauth_token: DeployedScriptHash::from(&deployment.mint_wpauth_token),
+            inflation: DeployedScriptInfo::from(&deployment.inflation),
+            voting_escrow: DeployedScriptInfo::from(&deployment.voting_escrow),
+            smart_farm: DeployedScriptInfo::from(&deployment.smart_farm),
+            farm_factory: DeployedScriptInfo::from(&deployment.farm_factory),
+            wp_factory: DeployedScriptInfo::from(&deployment.wp_factory),
+            ve_factory: DeployedScriptInfo::from(&deployment.ve_factory),
+            gov_proxy: DeployedScriptInfo::from(&deployment.gov_proxy),
+            perm_manager: DeployedScriptInfo::from(&deployment.perm_manager),
+            mint_wpauth_token: DeployedScriptInfo::from(&deployment.mint_wpauth_token),
         }
     }
 }
@@ -110,7 +112,7 @@ pub struct ProtocolDeployment {
 }
 
 impl ProtocolDeployment {
-    pub async fn unsafe_pull<'a>(validators: DeployedValidators, explorer: &Explorer<'a>) -> Self {
+    pub async fn unsafe_pull<Net: CardanoNetwork>(validators: DeployedValidators, explorer: &Net) -> Self {
         Self {
             inflation: DeployedValidator::unsafe_pull(validators.inflation, explorer).await,
             voting_escrow: DeployedValidator::unsafe_pull(validators.voting_escrow, explorer).await,

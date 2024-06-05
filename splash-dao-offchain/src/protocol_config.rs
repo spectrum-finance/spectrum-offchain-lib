@@ -1,14 +1,17 @@
-use cml_chain::address::Address;
+use cardano_explorer::constants::get_network_id;
+use cml_chain::address::{Address, EnterpriseAddress};
 use cml_chain::assets::AssetName;
 use cml_chain::builders::tx_builder::TransactionUnspentOutput;
+use cml_chain::certs::StakeCredential;
 use cml_chain::PolicyId;
-use cml_crypto::{Ed25519KeyHash, PrivateKey};
+use cml_crypto::{Bip32PrivateKey, Ed25519KeyHash, PrivateKey};
 use spectrum_cardano_lib::collateral::Collateral;
 use spectrum_offchain::data::Has;
 use spectrum_offchain_cardano::creds::operator_creds;
+use spectrum_offchain_cardano::deployment::DeployedScriptInfo;
 use type_equalities::IsEqual;
 
-use crate::deployment::{DeployedValidators, MintedTokens, ProtocolDeployment};
+use crate::deployment::{DeployedValidators, MintedTokens, ProtocolDeployment, ProtocolValidator};
 use crate::entities::onchain::inflation_box::InflationBoxId;
 use crate::entities::onchain::permission_manager::PermManagerId;
 use crate::entities::onchain::poll_factory::PollFactoryId;
@@ -16,6 +19,7 @@ use crate::entities::onchain::weighting_poll::WeightingPollId;
 use crate::time::ProtocolEpoch;
 use crate::GenesisEpochStartTime;
 
+#[derive(Clone)]
 pub struct ProtocolConfig {
     pub deployed_validators: ProtocolDeployment,
     pub tokens: ProtocolTokens,
@@ -32,11 +36,10 @@ impl ProtocolConfig {
     }
 }
 
+#[derive(Clone)]
 pub struct ProtocolTokens {
     pub splash_policy: PolicyId,
     pub splash_name: AssetName,
-    pub wpoll_auth_policy: PolicyId,
-    pub farm_auth_policy: PolicyId,
     pub factory_auth_policy: PolicyId,
     pub ve_factory_auth_policy: PolicyId,
     pub ve_factory_auth_name: AssetName,
@@ -47,24 +50,22 @@ pub struct ProtocolTokens {
     pub gt_name: AssetName,
 }
 
-//impl From<MintedTokens> for ProtocolTokens {
-//    fn from(value: MintedTokens, splash_policy: PolicyId, splash_name: AssetName) -> Self {
-//        Self {
-//            splash_policy,
-//            splash_name,
-//            wpoll_auth_policy: todo!(),
-//            farm_auth_policy: todo!(),
-//            factory_auth_policy: todo!(),
-//            ve_factory_auth_policy: todo!(),
-//            ve_factory_auth_name: todo!(),
-//            edao_msig_policy: todo!(),
-//            perm_manager_auth_policy: todo!(),
-//            perm_manager_auth_name: todo!(),
-//            gt_policy: todo!(),
-//            gt_name: todo!(),
-//        }
-//    }
-//}
+impl ProtocolTokens {
+    pub fn from_minted_tokens(value: MintedTokens, splash_policy: PolicyId, splash_name: AssetName) -> Self {
+        Self {
+            splash_policy,
+            splash_name,
+            factory_auth_policy: value.factory_auth.policy_id,
+            ve_factory_auth_policy: value.ve_factory_auth.policy_id,
+            ve_factory_auth_name: value.ve_factory_auth.asset_name,
+            edao_msig_policy: value.edao_msig.policy_id,
+            perm_manager_auth_policy: value.perm_auth.policy_id,
+            perm_manager_auth_name: value.perm_auth.asset_name,
+            gt_policy: value.gt.policy_id,
+            gt_name: value.gt.asset_name,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct InflationBoxRefScriptOutput(pub TransactionUnspentOutput);
@@ -172,7 +173,7 @@ impl Has<PollFactoryRefScriptOutput> for ProtocolConfig {
 
 impl Has<WPAuthPolicy> for ProtocolConfig {
     fn select<U: IsEqual<WPAuthPolicy>>(&self) -> WPAuthPolicy {
-        WPAuthPolicy(self.tokens.wpoll_auth_policy)
+        WPAuthPolicy(self.deployed_validators.mint_wpauth_token.hash)
     }
 }
 
@@ -184,14 +185,14 @@ impl Has<WPAuthRefScriptOutput> for ProtocolConfig {
 
 impl Has<FarmAuthPolicy> for ProtocolConfig {
     fn select<U: IsEqual<FarmAuthPolicy>>(&self) -> FarmAuthPolicy {
-        FarmAuthPolicy(self.tokens.farm_auth_policy)
+        // Note that this policy is a multivalidator with `smart_farm`
+        FarmAuthPolicy(self.deployed_validators.smart_farm.hash)
     }
 }
 
 impl Has<FarmAuthRefScriptOutput> for ProtocolConfig {
     fn select<U: IsEqual<FarmAuthRefScriptOutput>>(&self) -> FarmAuthRefScriptOutput {
-        todo!()
-        // FarmAuthRefScriptOutput(self.deployed_validators.smart_farm.reference_utxo.clone())
+        FarmAuthRefScriptOutput(self.deployed_validators.smart_farm.reference_utxo.clone())
     }
 }
 
@@ -281,8 +282,21 @@ impl Has<NodeMagic> for ProtocolConfig {
 
 impl Has<OperatorCreds> for ProtocolConfig {
     fn select<U: IsEqual<OperatorCreds>>(&self) -> OperatorCreds {
-        let (operator_sk, operator_pkh, operator_addr) = operator_creds(&self.operator_sk, self.node_magic);
-        OperatorCreds(operator_sk, operator_pkh, operator_addr)
+        let (operator_sk, _operator_pkh, operator_cred) = operator_creds(&self.operator_sk);
+        let operator_pk = operator_sk.to_public();
+        let operator_pkh = operator_pk.hash();
+        let network_id = get_network_id(self.node_magic);
+        let addr =
+            EnterpriseAddress::new(network_id, StakeCredential::new_pub_key(operator_pkh)).to_address();
+        OperatorCreds(operator_sk, operator_cred.0, addr)
+    }
+}
+
+impl Has<DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }>> for ProtocolConfig {
+    fn select<U: IsEqual<DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }>>>(
+        &self,
+    ) -> DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }> {
+        DeployedScriptInfo::from(&self.deployed_validators.gov_proxy)
     }
 }
 

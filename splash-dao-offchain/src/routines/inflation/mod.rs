@@ -66,7 +66,7 @@ where
         + StateProjectionWrite<VotingEscrowSnapshot, Bearer>
         + Send
         + Sync,
-    Backlog: ResilientBacklog<VotingOrder> + Send + Sync,
+    Backlog: ResilientBacklog<VotingOrder> + Send,
     SF: StateProjectionRead<SmartFarmSnapshot, Bearer>
         + StateProjectionWrite<SmartFarmSnapshot, Bearer>
         + Send

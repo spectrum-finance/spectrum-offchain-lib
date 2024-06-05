@@ -16,7 +16,7 @@ import {
 export type BuiltValidator = {
   script: Script;
   hash: string;
-  exBudget: {
+  cost: {
     mem: bigint;
     steps: bigint;
   };
@@ -47,7 +47,8 @@ export type NFTNames =
   | "ve_factory_auth"
   | "perm_auth"
   | "proposal_auth"
-  | "edao_msig";
+  | "edao_msig"
+  | "ve_identifier";
 
 export type DeployedValidator = BuiltValidator & {
   referenceUtxo: UTxO;

@@ -15,7 +15,7 @@ use spectrum_cardano_lib::types::TryFromPData;
 use spectrum_cardano_lib::{AssetName, OutputRef};
 use spectrum_offchain::data::{Has, HasIdentifier, Identifier, Stable};
 use spectrum_offchain::ledger::TryFromLedger;
-use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptHash};
+use spectrum_offchain_cardano::deployment::{test_address, DeployedScriptInfo};
 use spectrum_offchain_cardano::parametrized_validators::apply_params_validator;
 
 use crate::constants::MINT_FARM_AUTH_TOKEN_SCRIPT;
@@ -49,7 +49,7 @@ impl TryFromPData for FarmId {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct SmartFarm {
     pub farm_id: FarmId,
 }
@@ -111,7 +111,7 @@ impl<C> TryFromLedger<BabbageTransactionOutput, C> for SmartFarmSnapshot
 where
     C: Has<PermManagerAuthPolicy>
         + Has<OutputRef>
-        + Has<DeployedScriptHash<{ ProtocolValidator::SmartFarm as u8 }>>,
+        + Has<DeployedScriptInfo<{ ProtocolValidator::SmartFarm as u8 }>>,
 {
     fn try_from_ledger(repr: &BabbageTransactionOutput, ctx: &C) -> Option<Self> {
         let addr = repr.address();

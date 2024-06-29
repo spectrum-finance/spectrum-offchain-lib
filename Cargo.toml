@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "cardano-chain-sync",
+    "cardano-mempool-sync",
+    "cardano-submit-api",
+    "spectrum-offchain",
+    "spectrum-cardano-lib",
+    "cardano-explorer",
+    "algebra-core",
+    "spectrum-streaming",
+]
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
+lto = true

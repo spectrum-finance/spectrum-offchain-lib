@@ -1,0 +1,16 @@
+**/target/
+/Cargo.lock
+.DS_Store
+.idea/
+log/
+*.bin
+*.iml
+.local
+.vscode
+*.key
+tmp/
+seed.txt
+token.txt
+node_modules/
+state/
+

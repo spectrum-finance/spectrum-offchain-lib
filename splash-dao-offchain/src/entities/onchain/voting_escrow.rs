@@ -42,7 +42,9 @@ use crate::{
 pub type VotingEscrowSnapshot = Snapshot<VotingEscrow, OutputRef>;
 
 /// Identified by GT Token
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
+#[derive(
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize, derive_more::From,
+)]
 pub struct VotingEscrowId(Token);
 
 impl Identifier for VotingEscrowId {
@@ -74,6 +76,10 @@ impl VotingEscrow {
             }
             Lock::Indef(d) => self.gov_token_amount * d.as_secs() / MAX_LOCK_TIME_SECONDS,
         }
+    }
+
+    pub fn get_token(&self) -> Token {
+        (self.gt_policy, self.gt_auth_name)
     }
 }
 

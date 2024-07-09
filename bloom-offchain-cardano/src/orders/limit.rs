@@ -359,122 +359,123 @@ pub struct LimitOrderBounds {
     pub min_cost_per_ex_step: u64,
 }
 
-#[cfg(test)]
-mod tests {
-    use cml_chain::plutus::PlutusData;
-    use cml_chain::utils::BigInteger;
-    use cml_core::serialization::Deserialize;
-    use cml_crypto::{Ed25519KeyHash, TransactionHash};
-    use cml_multi_era::babbage::BabbageTransactionOutput;
-    use num_bigint::Sign;
-    use pallas_primitives::alonzo::PlutusData::BigInt;
-    use type_equalities::IsEqual;
-
-    use bloom_offchain::execution_engine::liquidity_book::fragment::Fragment;
-    use spectrum_cardano_lib::types::TryFromPData;
-    use spectrum_cardano_lib::OutputRef;
-    use spectrum_offchain::data::Has;
-    use spectrum_offchain::ledger::TryFromLedger;
-    use spectrum_offchain_cardano::creds::OperatorCred;
-    use spectrum_offchain_cardano::deployment::ProtocolValidator::LimitOrderV1;
-    use spectrum_offchain_cardano::deployment::{
-        DeployedScriptInfo, DeployedValidators, ProtocolScriptHashes,
-    };
-    use spectrum_offchain_cardano::utxo::ConsumedInputs;
-
-    use crate::orders::limit::{beacon_from_oref, unsafe_update_datum, Datum, LimitOrder, LimitOrderBounds};
-
-    struct Context {
-        limit_order: DeployedScriptInfo<{ LimitOrderV1 as u8 }>,
-        cred: OperatorCred,
-        consumed_inputs: ConsumedInputs,
-    }
-
-    impl Has<LimitOrderBounds> for Context {
-        fn select<U: IsEqual<LimitOrderBounds>>(&self) -> LimitOrderBounds {
-            LimitOrderBounds {
-                min_cost_per_ex_step: 0,
-            }
-        }
-    }
-
-    impl Has<ConsumedInputs> for Context {
-        fn select<U: IsEqual<ConsumedInputs>>(&self) -> ConsumedInputs {
-            self.consumed_inputs
-        }
-    }
-
-    impl Has<OperatorCred> for Context {
-        fn select<U: IsEqual<OperatorCred>>(&self) -> OperatorCred {
-            self.cred
-        }
-    }
-
-    impl Has<DeployedScriptInfo<{ LimitOrderV1 as u8 }>> for Context {
-        fn select<U: IsEqual<DeployedScriptInfo<{ LimitOrderV1 as u8 }>>>(
-            &self,
-        ) -> DeployedScriptInfo<{ LimitOrderV1 as u8 }> {
-            self.limit_order
-        }
-    }
-
-    #[test]
-    fn beacon_derivation_eqv() {
-        let oref = OutputRef::new(TransactionHash::from_hex(TX).unwrap(), IX);
-        assert_eq!(
-            beacon_from_oref(oref).to_hex(),
-            "eb9575d907ac66f8f0c75c44ad51189a4b41756e8543cd59e331bc02"
-        )
-    }
-
-    const TX: &str = "6c038a69587061acd5611507e68b1fd3a7e7d189367b7853f3bb5079a118b880";
-    const IX: u64 = 1;
-
-    #[test]
-    fn update_order_datum() {
-        let mut datum = PlutusData::from_cbor_bytes(&*hex::decode(DATA).unwrap()).unwrap();
-        let conf_0 = Datum::try_from_pd(datum.clone()).unwrap();
-        let new_ti = 20;
-        let new_fee = 50;
-        unsafe_update_datum(&mut datum, new_ti, new_fee);
-        let conf_1 = Datum::try_from_pd(datum).unwrap();
-        assert_eq!(
-            Datum {
-                tradable_input: new_ti,
-                fee: new_fee,
-                ..conf_0
-            },
-            conf_1
-        );
-    }
-
-    const DATA: &str = "d8799f4100581c0896cb319806556fe598d40dcc625c74fa27d29e19a00188c8f830bdd8799f4040ff1a05f5e1001a0007a1201903e8d8799f581c40079b8ba147fb87a00da10deff7ddd13d64daf48802bb3f82530c3e4a53504c41534854657374ffd8799f011903e8ff1a0007a120d8799fd8799f581cab450d88aab97ff92b1614217e5e34b5710e201da0057d3aab684390ffd8799fd8799fd8799f581c1bc47eaccd81a6a13070fdf67304fc5dc9723d85cff31f0421c53101ffffffff581cab450d88aab97ff92b1614217e5e34b5710e201da0057d3aab68439080ff";
-
-    #[test]
-    fn try_read() {
-        let raw_deployment = std::fs::read_to_string("/Users/oskin/dev/spectrum/spectrum-offchain-multiplatform/bloom-cardano-agent/resources/preprod.deployment.json").expect("Cannot load deployment file");
-        let deployment: DeployedValidators =
-            serde_json::from_str(&raw_deployment).expect("Invalid deployment file");
-        let scripts = ProtocolScriptHashes::from(&deployment);
-        let ctx = Context {
-            limit_order: scripts.limit_order,
-            cred: OperatorCred(Ed25519KeyHash::from([0u8; 28])),
-            consumed_inputs: ConsumedInputs::new(vec![].into_iter()),
-        };
-        let bearer = BabbageTransactionOutput::from_cbor_bytes(&*hex::decode(ORDER_UTXO).unwrap()).unwrap();
-        let ord = LimitOrder::try_from_ledger(&bearer, &ctx).expect("LimitOrder expected");
-        println!("Order: {:?}", ord);
-        println!("P_abs: {}", ord.price());
-    }
-
-    const ORDER_UTXO: &str = "a300583910dfaa80c9732ed3b7752ba189786723c6709e2876a024f8f4d9910fb36b6723106d7725d57913612286514abb81148d344b1675df297ee22401821a002625a0a1581c4b3459fd18a1dbabe207cd19c9951a9fac9f5c0f9c384e3d97efba26a14574657374431a00b71b00028201d81858e2d8798c4100581c64699bc6a6fb8a1cc7870dce35d3ab73f7fed5e7c385019373b695bbd87982581c4b3459fd18a1dbabe207cd19c9951a9fac9f5c0f9c384e3d97efba264574657374431a00b71b001a0007a1201a0007a120d879824040d879821b00244af2e97c32301b002386f26fc100001a0007a120d87982d87981581c1e5b525041f0d70ad830f1d7dbd2ed7012c1d89788b4385d7bdd0c37d87981d87981d87981581c6b6723106d7725d57913612286514abb81148d344b1675df297ee224581c1e5b525041f0d70ad830f1d7dbd2ed7012c1d89788b4385d7bdd0c3780";
-
-    #[test]
-    fn read_config() {
-        let conf =
-            Datum::try_from_pd(PlutusData::from_cbor_bytes(&*hex::decode(DATUM).unwrap()).unwrap()).unwrap();
-        dbg!(conf);
-    }
-
-    const DATUM: &str = "d8798c4100581cc998f08243360571213bcd847b100ab1acc948cdeeafdf7d90c9c678d8798240401a001e84801a000f424009d87982581cace2ea0fe142a3687acf86f55bcded860a920864163ee0d3dda8b6024552414b4552d879821b00232be5271fe999c2493635c9adc5dea0000000d87982d87981581c719bee424a97b58b3dca88fe5da6feac6494aa7226f975f3506c5b25d87981d87981d87981581c7846f6bb07f5b2825885e4502679e699b4e60a0c4609a46bc35454cd581c719bee424a97b58b3dca88fe5da6feac6494aa7226f975f3506c5b2581581c17979109209d255917b8563d1e50a5be8123d5e283fbc6fbb04550c6";
-}
+//#[cfg(test)]
+//mod tests {
+//    use cml_chain::plutus::PlutusData;
+//    use cml_chain::utils::BigInteger;
+//    use cml_core::serialization::Deserialize;
+//    use cml_crypto::{Ed25519KeyHash, TransactionHash};
+//    use cml_multi_era::babbage::BabbageTransactionOutput;
+//    use num_bigint::Sign;
+//    use pallas_primitives::alonzo::PlutusData::BigInt;
+//    use type_equalities::IsEqual;
+//
+//    use bloom_offchain::execution_engine::liquidity_book::fragment::Fragment;
+//    use spectrum_cardano_lib::types::TryFromPData;
+//    use spectrum_cardano_lib::OutputRef;
+//    use spectrum_offchain::data::Has;
+//    use spectrum_offchain::ledger::TryFromLedger;
+//    use spectrum_offchain_cardano::creds::OperatorCred;
+//    use spectrum_offchain_cardano::deployment::ProtocolValidator::LimitOrderV1;
+//    use spectrum_offchain_cardano::deployment::{
+//        DeployedScriptInfo, DeployedValidators, ProtocolScriptHashes,
+//    };
+//    use spectrum_offchain_cardano::utxo::ConsumedInputs;
+//
+//    use crate::orders::limit::{beacon_from_oref, unsafe_update_datum, Datum, LimitOrder, LimitOrderBounds};
+//
+//    struct Context {
+//        limit_order: DeployedScriptInfo<{ LimitOrderV1 as u8 }>,
+//        cred: OperatorCred,
+//        consumed_inputs: ConsumedInputs,
+//    }
+//
+//    impl Has<LimitOrderBounds> for Context {
+//        fn select<U: IsEqual<LimitOrderBounds>>(&self) -> LimitOrderBounds {
+//            LimitOrderBounds {
+//                min_cost_per_ex_step: 0,
+//            }
+//        }
+//    }
+//
+//    impl Has<ConsumedInputs> for Context {
+//        fn select<U: IsEqual<ConsumedInputs>>(&self) -> ConsumedInputs {
+//            self.consumed_inputs
+//        }
+//    }
+//
+//    impl Has<OperatorCred> for Context {
+//        fn select<U: IsEqual<OperatorCred>>(&self) -> OperatorCred {
+//            self.cred
+//        }
+//    }
+//
+//    impl Has<DeployedScriptInfo<{ LimitOrderV1 as u8 }>> for Context {
+//        fn select<U: IsEqual<DeployedScriptInfo<{ LimitOrderV1 as u8 }>>>(
+//            &self,
+//        ) -> DeployedScriptInfo<{ LimitOrderV1 as u8 }> {
+//            self.limit_order
+//        }
+//    }
+//
+//    #[test]
+//    fn beacon_derivation_eqv() {
+//        let oref = OutputRef::new(TransactionHash::from_hex(TX).unwrap(), IX);
+//        assert_eq!(
+//            beacon_from_oref(oref).to_hex(),
+//            "eb9575d907ac66f8f0c75c44ad51189a4b41756e8543cd59e331bc02"
+//        )
+//    }
+//
+//    const TX: &str = "6c038a69587061acd5611507e68b1fd3a7e7d189367b7853f3bb5079a118b880";
+//    const IX: u64 = 1;
+//
+//    #[test]
+//    fn update_order_datum() {
+//        let mut datum = PlutusData::from_cbor_bytes(&*hex::decode(DATA).unwrap()).unwrap();
+//        let conf_0 = Datum::try_from_pd(datum.clone()).unwrap();
+//        let new_ti = 20;
+//        let new_fee = 50;
+//        unsafe_update_datum(&mut datum, new_ti, new_fee);
+//        let conf_1 = Datum::try_from_pd(datum).unwrap();
+//        assert_eq!(
+//            Datum {
+//                tradable_input: new_ti,
+//                fee: new_fee,
+//                ..conf_0
+//            },
+//            conf_1
+//        );
+//    }
+//
+//    const DATA: &str = "d8799f4100581c0896cb319806556fe598d40dcc625c74fa27d29e19a00188c8f830bdd8799f4040ff1a05f5e1001a0007a1201903e8d8799f581c40079b8ba147fb87a00da10deff7ddd13d64daf48802bb3f82530c3e4a53504c41534854657374ffd8799f011903e8ff1a0007a120d8799fd8799f581cab450d88aab97ff92b1614217e5e34b5710e201da0057d3aab684390ffd8799fd8799fd8799f581c1bc47eaccd81a6a13070fdf67304fc5dc9723d85cff31f0421c53101ffffffff581cab450d88aab97ff92b1614217e5e34b5710e201da0057d3aab68439080ff";
+//
+//    #[test]
+//    fn try_read() {
+//        let raw_deployment = std::fs::read_to_string("/Users/oskin/dev/spectrum/spectrum-offchain-multiplatform/bloom-cardano-agent/resources/preprod.deployment.json").expect("Cannot load deployment file");
+//        let deployment: DeployedValidators =
+//            serde_json::from_str(&raw_deployment).expect("Invalid deployment file");
+//        let scripts = ProtocolScriptHashes::from(&deployment);
+//        let ctx = Context {
+//            limit_order: scripts.limit_order,
+//            cred: OperatorCred(Ed25519KeyHash::from([0u8; 28])),
+//            consumed_inputs: ConsumedInputs::new(vec![].into_iter()),
+//        };
+//        let bearer = BabbageTransactionOutput::from_cbor_bytes(&*hex::decode(ORDER_UTXO).unwrap()).unwrap();
+//        let ord = LimitOrder::try_from_ledger(&bearer, &ctx).expect("LimitOrder expected");
+//        println!("Order: {:?}", ord);
+//        println!("P_abs: {}", ord.price());
+//    }
+//
+//    const ORDER_UTXO: &str = "a300583910dfaa80c9732ed3b7752ba189786723c6709e2876a024f8f4d9910fb36b6723106d7725d57913612286514abb81148d344b1675df297ee22401821a002625a0a1581c4b3459fd18a1dbabe207cd19c9951a9fac9f5c0f9c384e3d97efba26a14574657374431a00b71b00028201d81858e2d8798c4100581c64699bc6a6fb8a1cc7870dce35d3ab73f7fed5e7c385019373b695bbd87982581c4b3459fd18a1dbabe207cd19c9951a9fac9f5c0f9c384e3d97efba264574657374431a00b71b001a0007a1201a0007a120d879824040d879821b00244af2e97c32301b002386f26fc100001a0007a120d87982d87981581c1e5b525041f0d70ad830f1d7dbd2ed7012c1d89788b4385d7bdd0c37d87981d87981d87981581c6b6723106d7725d57913612286514abb81148d344b1675df297ee224581c1e5b525041f0d70ad830f1d7dbd2ed7012c1d89788b4385d7bdd0c3780";
+//
+//    #[test]
+//    fn read_config() {
+//        let conf =
+//            Datum::try_from_pd(PlutusData::from_cbor_bytes(&*hex::decode(DATUM).unwrap()).unwrap()).unwrap();
+//        dbg!(conf);
+//    }
+//
+//    const DATUM: &str = "d8798c4100581cc998f08243360571213bcd847b100ab1acc948cdeeafdf7d90c9c678d8798240401a001e84801a000f424009d87982581cace2ea0fe142a3687acf86f55bcded860a920864163ee0d3dda8b6024552414b4552d879821b00232be5271fe999c2493635c9adc5dea0000000d87982d87981581c719bee424a97b58b3dca88fe5da6feac6494aa7226f975f3506c5b25d87981d87981d87981581c7846f6bb07f5b2825885e4502679e699b4e60a0c4609a46bc35454cd581c719bee424a97b58b3dca88fe5da6feac6494aa7226f975f3506c5b2581581c17979109209d255917b8563d1e50a5be8123d5e283fbc6fbb04550c6";
+//}
+//

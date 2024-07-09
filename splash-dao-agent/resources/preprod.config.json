@@ -2,14 +2,14 @@
   "chainSync": {
     "startingPoint": {
       "Specific": [
-        56027495,
-        "d17c06f640f311b3ad08004453983e52987a01dd2da63501c2a0f65a293458a3"
+        62660960,
+        "9b8092b1b9e2ce5f92194c33870b2fd0ab3fb04cb107466bdcc240e9ee42eff9"
       ]
     },
     "replayFromPoint": {
       "Specific": [
-        58169558,
-        "9830dc755157ad897f1e6fb6270742a69efcf2cc3859b1399f94fcc184fe150d"
+        62660960,
+        "9b8092b1b9e2ce5f92194c33870b2fd0ab3fb04cb107466bdcc240e9ee42eff9"
       ]
     },
     "disableRollbacksUntil": 55424270,
@@ -28,8 +28,8 @@
     "secs": 120,
     "nanos": 0
   },
-  "batcherPrivateKey": "xprv1erkmeckpyl2gevfldl7syepwulha7rs3qlucah7vwpr9a0qdyepk3u69hsgx2tfe8uhlqchmdnc89llxysndag2lk7vejyq5wwqw2ee020mxm9td97u3s0lpm03hqa8w5ghvlm28v7qxhjdcvppde42wgy4v90z0",
-  "genesisStartTime": 1717425811,
+  "batcherPrivateKey": "xprv1uppg6pk8kn3rwvgvs7zx7hzuk6m6qvsj7llyhmrzvg9kht4whptx9xaav5n9s9ywz8aexgxmfh6jahmqpvg5v96h6ux7e6uxk9c9dj4psz5szq5np4tzv5vtrjj2jztxnyacdfrm9e4qelm45q882m67qqyns84k",
+  "genesisStartTime": 1000,
   "orderBacklogConfig": { "db_path": "tmp/backlog" },
   "inflationBoxPersistenceConfig": { "db_path": "tmp/inflation" },
   "pollFactoryPersistenceConfig": { "db_path": "tmp/poll_factory" },

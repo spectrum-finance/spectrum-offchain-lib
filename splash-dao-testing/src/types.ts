@@ -38,6 +38,7 @@ export type ScriptNames =
   | "govProxy"
   | "permManager"
   | "mintWPAuthToken"
+  | "mintVECompositionToken"
   | "weightingPower"
   | "smartFarm";
 

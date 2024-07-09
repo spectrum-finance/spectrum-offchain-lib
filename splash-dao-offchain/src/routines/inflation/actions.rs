@@ -13,7 +13,7 @@ use cml_chain::plutus::RedeemerTag;
 use cml_chain::transaction::{TransactionInput, TransactionOutput};
 use cml_chain::utils::BigInteger;
 use cml_chain::OrderedHashMap;
-use cml_crypto::blake2b256;
+use cml_crypto::{blake2b256, RawBytesEncoding, TransactionHash};
 use spectrum_offchain_cardano::deployment::DeployedScriptInfo;
 
 use bloom_offchain::execution_engine::bundled::Bundled;
@@ -31,7 +31,9 @@ use crate::assets::SPLASH_AC;
 use crate::constants::{self};
 use crate::deployment::ProtocolValidator;
 use crate::entities::offchain::voting_order::VotingOrder;
-use crate::entities::onchain::inflation_box::{compute_inflation_box_script_hash, INFLATION_BOX_EX_UNITS};
+use crate::entities::onchain::inflation_box::{
+    compute_inflation_box_script_hash, unsafe_update_ibox_state, INFLATION_BOX_EX_UNITS,
+};
 use crate::entities::onchain::permission_manager::{compute_perm_manager_policy_id, PERM_MANAGER_EX_UNITS};
 use crate::entities::onchain::poll_factory::{
     compute_wp_factory_script_hash, unsafe_update_factory_state, FactoryRedeemer, PollFactoryAction,
@@ -110,13 +112,15 @@ pub struct CardanoInflationActions<Ctx> {
 impl<Ctx> InflationActions<TransactionOutput> for CardanoInflationActions<Ctx>
 where
     Ctx: Send
-        + Clone
         + Sync
+        + Clone
         + Has<Reward>
         + Has<Collateral>
         + Has<SplashPolicy>
         + Has<InflationBoxRefScriptOutput>
+        + Has<DeployedScriptInfo<{ ProtocolValidator::Inflation as u8 }>>
         + Has<PollFactoryRefScriptOutput>
+        + Has<DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }>>
         + Has<WPAuthPolicy>
         + Has<WPAuthRefScriptOutput>
         + Has<FarmAuthPolicy>
@@ -159,12 +163,10 @@ where
             self.ctx.select::<GTAuthPolicy>().0,
         );
 
-        let inflation_script_hash = compute_inflation_box_script_hash(
-            splash_policy,
-            wpoll_auth_policy,
-            weighting_power_policy,
-            genesis_time,
-        );
+        let inflation_script_hash = self
+            .ctx
+            .select::<DeployedScriptInfo<{ ProtocolValidator::Inflation as u8 }>>()
+            .script_hash;
         let inflation_script = PartialPlutusWitness::new(
             PlutusScriptWitness::Ref(inflation_script_hash),
             cml_chain::plutus::PlutusData::Integer(BigInteger::from(0)),
@@ -186,7 +188,7 @@ where
         let (next_inflation_box, emission_rate) = inflation_box.get().release_next_tranche();
         let mut inflation_box_out = inflation_box_in.clone();
         if let Some(data_mut) = inflation_box_out.data_mut() {
-            unsafe_update_factory_state(data_mut, next_inflation_box.last_processed_epoch);
+            unsafe_update_ibox_state(data_mut, next_inflation_box.last_processed_epoch);
         }
         inflation_box_out.sub_asset(*SPLASH_AC, emission_rate.untag());
         let inflation_output = SingleOutputBuilderResult::new(inflation_box_out.clone());
@@ -198,8 +200,10 @@ where
             .select::<DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }>>()
             .script_hash;
 
-        let wp_factory_script_hash =
-            compute_wp_factory_script_hash(wpoll_auth_policy, gov_witness_script_hash);
+        let wp_factory_script_hash = self
+            .ctx
+            .select::<DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }>>()
+            .script_hash;
 
         let factory_redeemer = FactoryRedeemer {
             successor_ix: 1,
@@ -210,8 +214,15 @@ where
             factory_redeemer.into_pd(),
         );
 
+        let wp_input = *(factory.version());
+        let mut bytes = wp_input.tx_hash().to_raw_bytes().to_vec();
+        bytes[10] = 0;
+        let th = TransactionHash::from_hex(&hex::encode(bytes.clone())).unwrap();
+        let ix = wp_input.index();
+        println!("QQQQQQQQQQQQQQQQQQQQ: {}, ix: {}", hex::encode(bytes), ix);
+
         let wp_factory_input =
-            SingleInputBuilder::new(TransactionInput::from(*(factory.version())), factory_in.clone())
+            SingleInputBuilder::new(TransactionInput::from(OutputRef::new(th, ix)), factory_in.clone())
                 .plutus_script_inline_datum(wp_factory_script, vec![])
                 .unwrap();
 
@@ -355,6 +366,7 @@ where
             )),
             Some(prev_factory_version),
         );
+        println!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         (
             signed_tx_builder,
             next_traced_ibox,

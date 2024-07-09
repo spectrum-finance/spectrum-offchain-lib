@@ -32,7 +32,7 @@ pub struct ProtocolConfig {
 
 impl ProtocolConfig {
     pub fn poll_id(&self, epoch: ProtocolEpoch) -> WeightingPollId {
-        todo!("implement binder")
+        WeightingPollId(0)
     }
 }
 
@@ -297,6 +297,54 @@ impl Has<DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }>> for Protocol
         &self,
     ) -> DeployedScriptInfo<{ ProtocolValidator::GovProxy as u8 }> {
         DeployedScriptInfo::from(&self.deployed_validators.gov_proxy)
+    }
+}
+
+impl Has<DeployedScriptInfo<{ ProtocolValidator::WpAuthPolicy as u8 }>> for ProtocolConfig {
+    fn select<U: IsEqual<DeployedScriptInfo<{ ProtocolValidator::WpAuthPolicy as u8 }>>>(
+        &self,
+    ) -> DeployedScriptInfo<{ ProtocolValidator::WpAuthPolicy as u8 }> {
+        DeployedScriptInfo::from(&self.deployed_validators.mint_wpauth_token)
+    }
+}
+
+impl Has<DeployedScriptInfo<{ ProtocolValidator::VotingEscrow as u8 }>> for ProtocolConfig {
+    fn select<U: IsEqual<DeployedScriptInfo<{ ProtocolValidator::VotingEscrow as u8 }>>>(
+        &self,
+    ) -> DeployedScriptInfo<{ ProtocolValidator::VotingEscrow as u8 }> {
+        DeployedScriptInfo::from(&self.deployed_validators.voting_escrow)
+    }
+}
+
+impl Has<DeployedScriptInfo<{ ProtocolValidator::Inflation as u8 }>> for ProtocolConfig {
+    fn select<U: IsEqual<DeployedScriptInfo<{ ProtocolValidator::Inflation as u8 }>>>(
+        &self,
+    ) -> DeployedScriptInfo<{ ProtocolValidator::Inflation as u8 }> {
+        DeployedScriptInfo::from(&self.deployed_validators.inflation)
+    }
+}
+
+impl Has<DeployedScriptInfo<{ ProtocolValidator::PermManager as u8 }>> for ProtocolConfig {
+    fn select<U: IsEqual<DeployedScriptInfo<{ ProtocolValidator::PermManager as u8 }>>>(
+        &self,
+    ) -> DeployedScriptInfo<{ ProtocolValidator::PermManager as u8 }> {
+        DeployedScriptInfo::from(&self.deployed_validators.perm_manager)
+    }
+}
+
+impl Has<DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }>> for ProtocolConfig {
+    fn select<U: IsEqual<DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }>>>(
+        &self,
+    ) -> DeployedScriptInfo<{ ProtocolValidator::WpFactory as u8 }> {
+        DeployedScriptInfo::from(&self.deployed_validators.wp_factory)
+    }
+}
+
+impl Has<DeployedScriptInfo<{ ProtocolValidator::SmartFarm as u8 }>> for ProtocolConfig {
+    fn select<U: IsEqual<DeployedScriptInfo<{ ProtocolValidator::SmartFarm as u8 }>>>(
+        &self,
+    ) -> DeployedScriptInfo<{ ProtocolValidator::SmartFarm as u8 }> {
+        DeployedScriptInfo::from(&self.deployed_validators.smart_farm)
     }
 }
 

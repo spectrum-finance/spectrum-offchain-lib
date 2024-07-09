@@ -108,7 +108,7 @@ impl TryFrom<Vec<u8>> for AssetName {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deserialize, Serialize)]
-#[serde(try_from = "String")]
+// #[serde(try_from = "String")]
 pub struct OutputRef(TransactionHash, u64);
 
 impl OutputRef {

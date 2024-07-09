@@ -27,14 +27,16 @@ use crate::time::ProtocolEpoch;
 
 pub type PollFactorySnapshot = Snapshot<PollFactory, OutputRef>;
 
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Debug, derive_more::Display)]
-pub struct PollFactoryId(pub ScriptHash);
+#[derive(
+    Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize, Debug, derive_more::Display,
+)]
+pub struct PollFactoryId;
 
 impl Identifier for PollFactoryId {
     type For = PollFactorySnapshot;
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct PollFactory {
     pub last_poll_epoch: ProtocolEpoch,
     pub active_farms: Vec<FarmId>,
@@ -65,7 +67,7 @@ impl HasIdentifier for PollFactorySnapshot {
     type Id = PollFactoryId;
 
     fn identifier(&self) -> Self::Id {
-        PollFactoryId(self.0.stable_id)
+        PollFactoryId
     }
 }
 
@@ -101,7 +103,7 @@ where
 impl Stable for PollFactory {
     type StableId = PollFactoryId;
     fn stable_id(&self) -> Self::StableId {
-        PollFactoryId(self.stable_id)
+        PollFactoryId
     }
     fn is_quasi_permanent(&self) -> bool {
         true
@@ -136,14 +138,14 @@ pub struct FactoryRedeemer {
 
 impl IntoPlutusData for FactoryRedeemer {
     fn into_pd(self) -> PlutusData {
-        let mut cpd = ConstrPlutusData::new(
+        let cpd = ConstrPlutusData::new(
             PF_REDEEMER_MAPPING.successor_ix as u64,
-            vec![(self.successor_ix as u64).into_pd()],
+            vec![(self.successor_ix as u64).into_pd(), self.action.into_pd()],
         );
-        cpd.set_field(
-            PF_REDEEMER_MAPPING.action,
-            PlutusData::new_list(vec![self.action.into_pd()]),
-        );
+        //cpd.set_field(
+        //    PF_REDEEMER_MAPPING.action,
+        //    PlutusData::new_list(vec![self.action.into_pd()]),
+        //);
         PlutusData::ConstrPlutusData(cpd)
     }
 }

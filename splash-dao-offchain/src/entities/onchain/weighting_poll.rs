@@ -35,8 +35,21 @@ use crate::{CurrentEpoch, GenesisEpochStartTime};
 
 pub type WeightingPollSnapshot = Snapshot<WeightingPoll, OutputRef>;
 
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, From, Serialize, Hash, Debug, derive_more::Display)]
-pub struct WeightingPollId(ProtocolEpoch);
+#[derive(
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    From,
+    Serialize,
+    Deserialize,
+    Hash,
+    Debug,
+    derive_more::Display,
+)]
+pub struct WeightingPollId(pub ProtocolEpoch);
 
 impl Identifier for WeightingPollId {
     type For = WeightingPollSnapshot;
@@ -92,7 +105,7 @@ where
                 self.emission_rate.untag(),
             )]),
         );
-        let amount = Value::new(MIN_ADA_IN_BOX, bundle.into());
+        let amount = Value::new(1379200, bundle.into());
         TransactionOutput::new(address, amount, Some(DatumOption::new_datum(datum)), None)
     }
 }

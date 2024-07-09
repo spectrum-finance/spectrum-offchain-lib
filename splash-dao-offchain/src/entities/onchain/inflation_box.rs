@@ -24,7 +24,7 @@ use crate::{constants, GenesisEpochStartTime};
 
 pub type InflationBoxSnapshot = Snapshot<InflationBox, OutputRef>;
 
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct InflationBoxId;
 
 impl Identifier for InflationBoxId {
@@ -60,7 +60,7 @@ impl HasIdentifier for InflationBoxSnapshot {
     type Id = InflationBoxId;
 
     fn identifier(&self) -> Self::Id {
-        InflationBoxId {}
+        InflationBoxId
     }
 }
 
@@ -99,13 +99,18 @@ where
 {
     fn try_from_ledger(repr: &BabbageTransactionOutput, ctx: &C) -> Option<Self> {
         if test_address(repr.address(), ctx) {
+            println!("INFLATION_BOX ADDR OK!!");
             let value = repr.value().clone();
+            println!("aaa");
             let epoch = repr.datum()?.into_pd()?.into_u64()?;
+            println!("bbb");
             let splash = value.multiasset.get(
                 &ctx.select::<SplashPolicy>().0,
                 &ctx.select::<SplashAssetName>().0,
             )?;
+            println!("ccc");
             let script_hash = repr.script_hash()?;
+            println!("ddd");
 
             let inflation_box = InflationBox {
                 last_processed_epoch: epoch as u32,
@@ -143,4 +148,14 @@ pub fn compute_inflation_box_script_hash(
         uplc::PlutusData::BigInt(uplc::BigInt::Int(Int::from(zeroth_epoch_start as i64))),
     ]);
     apply_params_validator(params_pd, INFLATION_SCRIPT)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::entities::onchain::inflation_box::emission_rate;
+
+    #[test]
+    fn check_emission() {
+        println!("epoch 0 emission: {:?}", emission_rate(0));
+    }
 }

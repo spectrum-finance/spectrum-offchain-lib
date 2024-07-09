@@ -25,8 +25,8 @@ use crate::{
     protocol_config::{PermManagerAuthName, PermManagerAuthPolicy},
 };
 
-#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, From, Serialize)]
-pub struct PermManagerId(pub Token);
+#[derive(Copy, Clone, PartialEq, Eq, Ord, PartialOrd, From, Serialize, Deserialize)]
+pub struct PermManagerId;
 
 impl Identifier for PermManagerId {
     type For = PermManagerSnapshot;
@@ -40,11 +40,17 @@ pub struct PermManager {
     pub auth_token_asset_name: AssetName,
 }
 
+impl PermManager {
+    pub fn get_token(&self) -> Token {
+        (self.perm_manager_auth_policy, self.auth_token_asset_name)
+    }
+}
+
 impl HasIdentifier for PermManagerSnapshot {
     type Id = PermManagerId;
 
     fn identifier(&self) -> Self::Id {
-        PermManagerId((self.0.perm_manager_auth_policy, self.0.auth_token_asset_name))
+        PermManagerId
     }
 }
 

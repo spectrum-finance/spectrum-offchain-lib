@@ -7,18 +7,31 @@ use std::{
 use async_trait::async_trait;
 use bounded_integer::BoundedU8;
 use cardano_chain_sync::{
-    cache::LedgerCacheRocksDB, chain_sync_stream, client::ChainSyncClient, event_source::ledger_transactions,
+    cache::LedgerCacheRocksDB, chain_sync_stream, client::ChainSyncClient, data::LedgerTxEvent,
+    event_source::ledger_transactions,
 };
 use cardano_explorer::Maestro;
 use cardano_submit_api::client::LocalTxSubmissionClient;
 use chrono::Duration;
 use clap::Parser;
-use cml_chain::{address::RewardAddress, assets::AssetName, transaction::Transaction, PolicyId};
+use cml_chain::{
+    address::RewardAddress,
+    assets::AssetName,
+    transaction::{Transaction, TransactionOutput},
+    PolicyId,
+};
+use cml_crypto::TransactionHash;
+use cml_multi_era::babbage::BabbageTransaction;
 use config::AppConfig;
-use spectrum_cardano_lib::constants::BABBAGE_ERA_ID;
+use futures::{stream::select_all, FutureExt, Stream, StreamExt};
+use spectrum_cardano_lib::{
+    constants::BABBAGE_ERA_ID, hash::hash_transaction_canonical, output::FinalizedTxOut,
+};
 use spectrum_offchain::{
     backlog::{persistence::BacklogStoreRocksDB, BacklogConfig, PersistentPriorityBacklog},
+    event_sink::{event_handler::EventHandler, process_events},
     rocks::RocksConfig,
+    streaming::boxed,
 };
 use spectrum_offchain_cardano::{
     collateral::pull_collateral,
@@ -29,10 +42,12 @@ use spectrum_offchain_cardano::{
 use splash_dao_offchain::{
     deployment::{DaoDeployment, ProtocolDeployment},
     entities::offchain::voting_order::VotingOrder,
+    handler::DaoHandler,
     protocol_config::{ProtocolConfig, ProtocolTokens},
     routines::inflation::{actions::CardanoInflationActions, Behaviour},
     state_projection::StateProjectionRocksDB,
     time::{NetworkTime, NetworkTimeProvider},
+    NetworkTimeSource,
 };
 use tokio::sync::Mutex;
 use tracing::info;
@@ -80,13 +95,23 @@ async fn main() {
 
     // prepare upstreams
     let tx_submission_stream = tx_submission_agent_stream(tx_submission_agent);
-    let (signal_tip_reached_snd, signal_tip_reached_recv) = tokio::sync::broadcast::channel(1);
+    let (signal_tip_reached_snd, mut signal_tip_reached_recv) = tokio::sync::broadcast::channel(1);
     let ledger_stream = Box::pin(ledger_transactions(
         chain_sync_cache,
         chain_sync_stream(chain_sync, signal_tip_reached_snd),
         config.chain_sync.disable_rollbacks_until,
         config.chain_sync.replay_from_point,
-    ));
+    ))
+    .await
+    .map(|ev| match ev {
+        LedgerTxEvent::TxApplied { tx, slot } => LedgerTxEvent::TxApplied {
+            tx: (hash_transaction_canonical(&tx.body), tx),
+            slot,
+        },
+        LedgerTxEvent::TxUnapplied(tx) => {
+            LedgerTxEvent::TxUnapplied((hash_transaction_canonical(&tx.body), tx))
+        }
+    });
 
     // We assume the batcher's private key is associated with a Cardano base address, which also
     // includes a reward address.
@@ -98,8 +123,8 @@ async fn main() {
         .expect("Couldn't retrieve collateral");
 
     let splash_policy =
-        PolicyId::from_hex("40079b8ba147fb87a00da10deff7ddd13d64daf48802bb3f82530c3e").unwrap();
-    let splash_name = AssetName::from(spectrum_cardano_lib::AssetName::utf8_unsafe("SplashTEST".into()));
+        PolicyId::from_hex("adf2425c138138efce80fd0b2ed8f227caf052f9ec44b8a92e942dfa").unwrap();
+    let splash_name = AssetName::from(spectrum_cardano_lib::AssetName::utf8_unsafe("SPLASH".into()));
 
     let node_magic: u8 = config.network_id.into();
     let protocol_config = ProtocolConfig {
@@ -112,10 +137,11 @@ async fn main() {
         genesis_time: config.genesis_start_time.into(),
     };
 
-    let prover = OperatorProver::new(&operator_sk);
+    let (ledger_event_snd, ledger_event_rcv) = tokio::sync::mpsc::channel(100);
+
     let inflation_actions = CardanoInflationActions::from(protocol_config.clone());
 
-    let behaviour = Behaviour::new(
+    let mut behaviour = Behaviour::new(
         StateProjectionRocksDB::new(config.inflation_box_persistence_config),
         StateProjectionRocksDB::new(config.poll_factory_persistence_config),
         StateProjectionRocksDB::new(config.weighting_poll_persistence_config),
@@ -126,10 +152,25 @@ async fn main() {
         NetworkTimeSource {},
         inflation_actions,
         protocol_config,
-        PhantomData,
+        PhantomData::<TransactionOutput>,
         tx_submission_channel,
-        prover,
+        operator_sk,
+        ledger_event_rcv,
+        signal_tip_reached_recv,
     );
+
+    let handlers: Vec<Box<dyn EventHandler<LedgerTxEvent<ProcessingTransaction>>>> =
+        vec![Box::new(DaoHandler::new(ledger_event_snd))];
+    let process_ledger_events_stream = process_events(ledger_stream, handlers);
+
+    let mut app = select_all(vec![
+        boxed(process_ledger_events_stream),
+        boxed(behaviour.as_stream()),
+        boxed(tx_submission_stream),
+    ]);
+    loop {
+        app.select_next_some().await;
+    }
 }
 
 async fn setup_order_backlog(
@@ -162,14 +203,12 @@ struct AppArgs {
     log4rs_path: String,
 }
 
-struct NetworkTimeSource;
+pub type ProcessingTransaction = (TransactionHash, BabbageTransaction);
 
-#[async_trait]
-impl NetworkTimeProvider for NetworkTimeSource {
-    async fn network_time(&self) -> NetworkTime {
-        std::time::SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-    }
-}
+//fn receiver_as_stream<T>(rcv: tokio::sync::mpsc::Receiver<T>) -> impl Stream<Item = T> {
+//    stream! {
+//        loop {
+//            match rcv.
+//        }
+//    }
+//}

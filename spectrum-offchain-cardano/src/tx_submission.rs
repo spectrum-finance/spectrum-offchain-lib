@@ -53,6 +53,7 @@ impl From<SubmissionResult> for Result<(), TxRejected> {
             SubmissionResult::TxRejectedResult {
                 rejected_bytes: Some(error),
             } => {
+                println!("TX ERROR RAW_BYTES: {}", hex::encode(error.clone()));
                 let missing_inputs = transcribe_bad_inputs_error(error);
                 Err(if !missing_inputs.is_empty() {
                     TxRejected::MissingInputs(missing_inputs)
